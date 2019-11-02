@@ -5,6 +5,7 @@ const { getProvidersFromDirectory } = require('./lib')
 const { promisify } = require('util')
 
 const app = express()
+const PORT = process.env.PORT || 3001
 
 app.use(function (req, res, next) {
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -31,9 +32,9 @@ async function launch () {
         }
     }
 
-    app.listen(3001)
+    app.listen(PORT)
 
-    console.log('Listening on port', 3001)
+    console.log('Listening on port', PORT)
 }
 
 launch().catch(function (err) { 
