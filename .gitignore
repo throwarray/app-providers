@@ -1,0 +1,9 @@
+.vscode
+.next
+.env
+node_modules
+idea
+*.pem
+**/ffmpeg.exe
+server/providers/storage
+test/
