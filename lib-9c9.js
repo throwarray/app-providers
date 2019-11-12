@@ -1,7 +1,13 @@
 const request = require('request')
 const pify = require('pify')
 const fetch = pify(request)
-const { parseIdPrefix } = require('./lib')
+const ID_REGEX = /(\w+(?:-|$)(?:\w+-)?)(.*)/
+
+const parseIdPrefix =(id)=> {
+    const match = (id || '').match(ID_REGEX)
+
+    return match //[input, prefix, id]
+}
 
 function parseImages (images) {
     let posterImg, thumbnailImg

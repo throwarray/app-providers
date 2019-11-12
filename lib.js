@@ -1,14 +1,8 @@
-const ID_REGEX = /(\w+(?:-|$)(?:\w+-)?)(.*)/
 
 const fs = require('fs')
 
 const { promisify } = require('util')
 
-const parseIdPrefix =(id)=> {
-    const match = (id || '').match(ID_REGEX)
-
-    return match //[input, prefix, id]
-}
 
 async function handleRoute (Routes, props) {
     const query = props.query
@@ -47,6 +41,5 @@ const getProvidersFromDirectory = promisify(function (directory, cb) {
 
 module.exports = {
     handleRoute,
-    parseIdPrefix,
     getProvidersFromDirectory
 }

@@ -27,7 +27,10 @@ async function launch () {
             const { router: mount } = await wrapProvider(path.join(providerDir, filename))
         
             if (mount) app.use(`/providers/${id}`, mount)
+
+            console.log('Mounted provider', id)
         } catch (e) {
+            console.log('Failed to mount provider', id, e)
             continue
         }
     }

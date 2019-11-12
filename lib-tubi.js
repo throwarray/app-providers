@@ -75,6 +75,17 @@ function collection ({ cursor = 0, /* skip n items */ limit = 50, container = 'w
     })    
 }
 
+function getContainers (cb) {
+    request({
+        url: 'https://tubitv.com/oz/containers',
+        jar,
+        gzip: true,
+        json: true
+    }, function (err, response, body) {
+        if (err || !Array.isArray(body.list) || !body.hash) cb(err || new Error('Invalid container response'))
+        else cb(false, body)
+    })
+}
 
 module.exports = {
     collection,
@@ -82,6 +93,7 @@ module.exports = {
     refresh,
     setCookies,
     getCookies,
+    getContainers,
     logout,
     login
 }

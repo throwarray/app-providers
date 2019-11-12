@@ -4,13 +4,15 @@ const request = require('request')
 
 const pify = require('pify')
 
-const { mediaInfo, collection: collectionInfo } = require('./lib-tubi')
+const { mediaInfo, collection: collectionInfo, getContainers } = require('./lib-tubi')
 
 const hasOwn = Object.prototype.hasOwnProperty
 
 const tubiMediaInfo = pify(mediaInfo)
 
 const tubiCollection = pify(collectionInfo)
+
+const getCollections = pify(getContainers)
 
 const idRegex = /^tubi-media-(.*)$/
 const collectionRegex = /^tubi-collection-(.*)$/
@@ -119,6 +121,7 @@ const Views = Object.assign(Object.create(null), {
     tubi: { title: 'TUBI', items: [
         { type: 'collection', id: 'tubi-series', title: 'SERIES', height: 50 },
         { type: 'collection', id: 'tubi-movies', title: 'MOVIES', height: 50 },
+        { type: 'collection', id: 'tubi-collections', title: 'COLLECTIONS', height: 50, width: 100 },        
         { type: 'collection', id: 'tubi-collection-featured', title: 'Featured'},
         { type: 'collection', id: 'tubi-collection-weekly_watchlist', title: 'Weekly Watchlist'},
         { type: 'collection', id: 'tubi-collection-recently_added', title: 'Recently Added'},
@@ -128,6 +131,34 @@ const Views = Object.assign(Object.create(null), {
         { type: 'collection', id: 'tubi-collection-cult_favorites', title: 'Cult Favorites'},
         { type: 'collection', id: 'tubi-collection-sports_movies_and_tv', title: 'Sports Movies & Tv'},
     ]},
+    'tubi-collections': async function () {
+        const { list, hash } = await getCollections()
+        const hasOwn = Object.prototype.hasOwnProperty
+
+        return {
+            title: 'COLLECTIONS',
+            type: 'collection',
+            id: 'tubi-collections',
+            items: list.map(function (collectionId) {
+                const itemProps = {
+                    type: 'collection',
+                    id: 'tubi-collection-' + collectionId,
+                }
+
+                if (hasOwn.call(hash), collectionId) {
+                    const props = hash[collectionId]
+
+                    Object.assign(itemProps, {
+                        title: props.title,
+                        description: props.description,
+                        poster: props.thumbnail? props.thumbnail.replace(/^http:\/\//, 'https://') : void 0
+                    })
+                }
+
+                return itemProps
+            })
+        }
+    },
     'tubi-series': { title: 'SERIES', items: [
         { type: 'collection', id: 'tubi-collection-stand_up_comedy', title: 'Stand Up Comedy'},
         { type: 'collection', id: 'tubi-collection-tv_comedies', title: 'TV Comedies'},
@@ -160,17 +191,23 @@ const Views = Object.assign(Object.create(null), {
     ]}
 })
 
-async function collection ({ query: { title, page, id = '' } }) {
-    if (hasOwn.call(Views, id)) {
-        const { items, title: collectionTitle } = Views[id]
+async function collection (request) {
+    const { query: { title, page, id = '' } = {} } = request
 
-        return {
+    if (hasOwn.call(Views, id)) {
+        let route = Views[id]
+        
+        const collectionDefaults = {
             type: 'collection',
-            title: collectionTitle || title,
-            items,
+            title: title,
             id,
             page
         }
+
+        if (typeof route === 'function') route = await route(request)
+
+
+        return Object.assign({}, collectionDefaults, route)
     }
 
     const currentPage = Number(page) || 1
