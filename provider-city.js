@@ -70,3 +70,58 @@ module.exports = {
         return data
     }
 }
+
+
+// TODO
+
+// {
+//     const selectors = [
+//         '.section-full-episodes.homepage-latest', 
+//         '.section-full-episodes.homepage-popular'
+//     ]
+    
+//     const carousels = Array.prototype.slice.call($(selectors.join(', ')).map(function () {
+//         return $(this).find('[data-video-id]').map(function () {
+//             const elem = $(this)
+//             const detailsElem = elem.find('.bcc-carousel-details').first()
+//             const tooltipElem = elem.find('.bcc-tooltip-template').first()
+//             const titleElem =  detailsElem.find('.bcc-carousel-title').first()
+//             const episodeElem = tooltipElem.find('.bcc-tooltip-season').text().replace(/\s|\t/g, '')
+//             const mediaType = elem.attr('data-video-type') // || 'series'
+//             const mediaId = elem.attr('data-video-id')
+//             const episodeTitle = titleElem.next().text() || tooltipElem.find('bcc-tooltip-videoname').text()
+//             const seriesTitle = elem.attr('data-show-name') || tooltipElem.find('bcc-tooltip-showname').text() || titleElem.text() || episodeTitle
+//             const description =  tooltipElem.find('.bcc-tooltip-desc').text() || episodeTitle
+//             const thumbnail = elem.find('.bcc-carousel-thumb img').attr('src')
+        
+//             const output = { 
+//                 type: mediaType, 
+//                 series: seriesTitle,
+//                 title: episodeTitle,
+//                 id: 'city-ref:' + mediaId,
+//                 description,
+//                 poster: thumbnail
+//             }  
+        
+//             if (mediaType === 'episode') {
+//                 const matched = episodeElem.match(/^Season(\d+),Episode(\d+)$/)
+//                 if (matched) {
+//                     output.season = Number(matched[1])
+//                     output.episode = Number(matched[2])   
+//                 }
+//             }
+        
+//             return output
+//         })
+//     }))
+
+//     const ItemsById = new Map()  // dedupe and concat
+
+//     carousels.forEach(carousel=>
+//         Array.prototype.slice.call(carousel).forEach(item => ItemsById.set(item.id, item)) 
+//     )
+
+//     const items = [...ItemsById.values()]
+        
+//     console.log('ITEMS', items)
+// }
