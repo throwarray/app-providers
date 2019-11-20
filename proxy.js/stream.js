@@ -158,12 +158,13 @@ module.exports = function ({
             request({
                 url: requestUrl,
                 headers,
-                gzip: true
+                gzip: true,
+                timeout: 20000
             }, function (err, response) {
-                if (err || (response.statusCode < 200 || response.statusCode >= 400)) 
-                {
+                if (err || !response || (response.statusCode < 200 || response.statusCode >= 400)) {
                     err = err || new Error('Invalid response')
-                    err.status = response.statusCode
+                    err.status = response && response.statusCode || 404
+
                     handleError(err)
     
                     return

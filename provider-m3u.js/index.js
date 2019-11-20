@@ -1,23 +1,12 @@
-// ext dep
 const request = require('request')
-const express = require('express')
-const ffmpeg = require('fluent-ffmpeg')
-const rimraf = require('rimraf')
 const uuid = require('uuid')
-
-const fs = require('fs')
 const { promisify } = require('util')
-const path = require('path')
 const wrapProvider = require('../wrap-provider')
 
 ///////////////////////////
-// options
-const assetPath = path.join(__dirname, './storage')
-const ffmpegPath = process.env.FFMPEG_PATH || path.join(__dirname, './ffmpeg.exe')
+const APP_URL = process.env.APP_URL
 
-ffmpeg.setFfmpegPath(ffmpegPath)
-
-///////////////////////////
+// TODO unused deps rimraf, fluent-ffmpeg
 
 function* matchParams (input) {
   const reg = /((?:\w-?)+)(?:(?:,|\s|$)|=(?:"([^"]*)")|(\w*))(?:,|\s|$)/g
@@ -65,6 +54,10 @@ function* matchItems (input) {
   } while (matches)
 }
 
+function combineURLS(baseURL, relativeURL) {
+  return relativeURL ? baseURL.replace(/\/+$/, '') + '/' + relativeURL.replace(/^\/+/, '') : baseURL
+}
+
 async function getListItems (txt) {
   return new Map([...matchItems(txt)].map(function ({ url, params, title }) {
     const filename = uuid.v4()
@@ -72,11 +65,11 @@ async function getListItems (txt) {
     let poster = params.get('tvg-logo') || ''
 
     let item = {
-      id: 'm3u-item-' + encodeURI(url.toString()),
+      id: 'm3u-item-' + filename, // encodeURI(url.toString()),
       title: title || filename,
       tmdb_id: false,
       contentType: 'm3u8',
-      src: '/providers/m3u/storage/' + filename + '/stream.m3u8'
+      src: combineURLS(APP_URL, '/api/stream?q=' + encodeURI(url)) // '/providers/m3u/storage/' + filename + '/stream.m3u8'
     }
     
     if (poster.startsWith('https://i.imgur.com/')) item.poster = poster
@@ -86,28 +79,26 @@ async function getListItems (txt) {
 }
 
 module.exports = async function () {
-  // FIXME not on server start
-  const fetch = promisify(request)
-  const { body } = await fetch({ 
-    url: 'https://raw.githubusercontent.com/iptv-org/iptv/master/channels/ca.m3u', 
-    gzip: true,
-    headers: {
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.5',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0'
-    }
-  })
-
-  let itemsMap = await getListItems(body.toString('utf8'))
-
   async function collection () {
     return {
       type: 'catalogue',
       id: 'm3u',
       items: [
         { 
-          id: 'm3u-list',
-          title: 'm3u list',
+          id: 'm3u-list-ca.m3u',
+          title: 'CA',
+          type: 'series',
+          tmdb_id: false
+        },
+        { 
+          id: 'm3u-list-us.m3u',
+          title: 'US',
+          type: 'series',
+          tmdb_id: false
+        },
+        { 
+          id: 'm3u-list-uk.m3u',
+          title: 'UK',
           type: 'series',
           tmdb_id: false
         }
@@ -118,91 +109,48 @@ module.exports = async function () {
   async function streams () { }
   
   async function meta ({ query }) {
-    if (query.id === 'm3u-list') {
-      return {
-        id: 'm3u-list',
-        type: 'series',
-        title: 'm3u list',
-        season: 1,
-        seasons: [
-          { title: 'ca', season: 1, items: [...itemsMap.values()].map((item, i)=> {
-            return {
-              ...item,
-              season: 1,
-              episode: i
-            }
-          }) }
-        ]
+    const fetch = promisify(request)
+    
+    const matched = query.id.match(/^m3u-list-(.+)$/)
+    
+    if (!matched || !matched[1]) return
+
+    const id = matched[1]
+
+    const { body } = await fetch({ 
+      url: `https://raw.githubusercontent.com/iptv-org/iptv/master/channels/${id}`, 
+      gzip: true,
+      headers: {
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0'
       }
+    })
+  
+    let itemsMap = await getListItems(body.toString('utf8'))
+    
+    const list = [...itemsMap.values()]
+
+    if (!list.length) return
+
+    return {
+      id: query.id,
+      type: 'series',
+      title: query.id,
+      season: 1,
+      seasons: [
+        { title: id, season: 1, items: list.map((item, i)=> {
+          return {
+            ...item,
+            season: 1,
+            episode: i
+          }
+        }) }
+      ]
     }
   }
   
-  const wrote = new Map()
   const { router } = await wrapProvider({ collection, meta, streams })
-
-  setInterval(function () {
-    wrote.forEach(function ({ command, iat, uid }) {
-      const now = Date.now()
-      const diff = now - iat
-
-      if (diff >= 10000) {
-        command.kill()
-        wrote.delete(uid)
-        rimraf(path.join(assetPath, './' + uid + '/'), function () {
-          console.log('DESTROY!', uid)
-        })
-      }
-    })
-  }, 1000)
-
-  router.get('/storage/:uid/stream.m3u8', function (req, res, next) {
-    const uid = req.params.uid
-
-    if (itemsMap.has(uid) && !wrote.has(uid)) {
-      const { id, title } = itemsMap.get(uid)
-      const src = decodeURI(id.replace(/^m3u-item-/, ''))
-      const destination = path.join(assetPath, './' + uid + '/stream.m3u8')
-
-      fs.mkdir(path.join(assetPath, './' + uid), function () {
-          const command = ffmpeg()
-          .input(src)
-          .format('hls')
-          .outputOptions([ // https://ffmpeg.org/ffmpeg-formats.html
-            '-hls_list_size', '5',
-            '-hls_flags', 'delete_segments'
-          ])
-          .output(destination)
-          .once('start', function () { 
-              setTimeout(function () {
-                console.log('stream ready')
-                next()
-              }, 5000) // FIXME
-          })
-          .once('end', function () { next() })
-          .once('error', function () { next() })
-  
-          command.run()
-          wrote.set(uid, { iat: Date.now(), command, uid })
-  
-          console.log('TRANSCODE', uid, src, title, destination)
-      })
-    } else {
-      next()
-    }
-  }, function (req, res, next) {
-    const uid = req.params.uid
-    const meta = wrote.get(uid)
-
-    if (meta) meta.iat = Date.now()
-
-    next()
-  }, function (req, res) {
-    const uid = req.params.uid
-    res.type('application/x-mpegurl')
-    res.sendFile(path.join(assetPath, './' + uid + '/stream.m3u8'))
-  })
-
-  router.use('/storage', express.static(assetPath))
 
   return router
 }

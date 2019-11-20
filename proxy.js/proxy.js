@@ -124,7 +124,7 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
                     if (headername === 'location') {
                         isRedirect = true
 
-                        res.setHeader('Location', `${STREAM_PATH_VALID}?q=` + encodeURI(value))
+                        res.setHeader('Location', `${STREAM_PATH_VALID}?q=` + encodeURI(value)) // TODO handle relative paths?
 
                         return
                     }
