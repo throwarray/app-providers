@@ -2,6 +2,8 @@ const fetch = require('./fetch.js')
 const AbortController = require('abort-controller')
 
 function hasContentType (header_value = '', contentType = '') {
+    if (!header_value) return
+
     const m = header_value.split(';')
     const needle = contentType.toLowerCase() 
     
@@ -24,7 +26,7 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
             controller.abort()
             console.warn('ERROR', err)
         }
-    
+
         const pathname = ((typeof q === 'string' && q) || '').trim()
         
         if (!pathname) { 
@@ -36,11 +38,12 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
         let requestUrl
         
         const headers = {
-            'Accept-Encoding': 'gzip',
-            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:69.0) Gecko/20100101 Firefox/69.0',
             DNT: 1,
-            // Connection: 'keep-alive',
-            // Origin: 'https://google.com'
+            Connection: 'keep-alive',            
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0",
+            'Accept-Encoding': 'gzip',
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
         }
 
         try {
@@ -56,7 +59,7 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
             err.status = 500
             
             res.setHeader('access-control-allow-origin', '*')
-
+            
             handleError(err)
             
             return
@@ -72,9 +75,8 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
         if (connection) headers.Connection = connection
         
         if (range) headers.range = range
-        if (ref) headers.Referer = ref
-
-        console.log('PROXY REQUEST', method, requestUrl)
+        if (ref !== void 0) headers.Referer = decodeURIComponent(ref)
+        // if (o !== void 0) headers.origin = decodeURIComponent(o)
 
         // Forward Request
         fetch(requestUrl, {
@@ -82,86 +84,94 @@ module.exports = function ({ STREAM_PATH_VALID, STREAM_PATH_MANIFEST }) {
             compress: true,
             signal,
             method
+        }).then(function (response) {
+        
+        console.log('PROXY REQUEST', method, requestUrl, response.status)
+
+        res.setHeader('access-control-allow-origin', '*')
+        
+        if (!response.ok && requestedHeaders && req.method === 'OPTIONS') { //FIXME Options requests may fail likely due Origin'
+            controller.abort()
+            
+            res.setHeader('access-control-allow-headers', requestedHeaders || 'range')
+            res.status(200)
+            res.end()
+            
+            return
+        }
+    
+        if (requestedHeaders) res.setHeader('access-control-allow-headers', requestedHeaders || 'range')
+        
+        let isRedirect = false
+        
+        // Set Response Headers and status
+        const rawHeaders = response.headers.raw()
+        const allowedHeaders = [
+            'accept-ranges',
+            'content-length',
+            'connection',
+            'content-type',
+            'content-range',
+            // 'content-encoding',
+            'cache-control',
+            'expires',
+            'location',
+            'transfer-encoding',
+            'access-control-request-headers',
+            'etag'
+        ]
+        
+        const refArg = ref === void 0 ? '' : 'ref=' + encodeURIComponent(ref)  + '&'
+        const originArg = o === void 0 ? '' : 'o=' + encodeURIComponent(o)  + '&'
+        
+        allowedHeaders.forEach(headername => {
+            if (response.headers.has(headername)) {
+                const value =  response.headers.get(headername)
+                
+                if (headername === 'location') {
+                    isRedirect = true
+                    
+                    res.setHeader('Location', `${STREAM_PATH_VALID}?${originArg}${refArg}q=` + encodeURIComponent(value)) // TODO handle relative paths?
+                    
+                    return
+                }
+                
+                const values = rawHeaders[headername]
+                
+                if (Array.isArray(values)) {
+                    values.forEach(function (value) {
+                        res.setHeader(headername, value)
+                    })
+                }
+                
+                else res.setHeader(headername, value)
+            } 
         })
-        .then(function (response) {
-            res.setHeader('access-control-allow-origin', '*')
+        
+        const statusCode = response.status
+        
+        res.status(statusCode)
 
-            if (!response.ok && requestedHeaders && req.method === 'OPTIONS') { //FIXME Options requests may fail likely due Origin'
-                controller.abort()
+        // Redirect and rewrite m3u8 files
+        if (!isRedirect && hasContentType(response.headers.get('content-type'), 'application/x-mpegurl')) {
+            console.log('REDIRECT STREAM')
+            controller.abort()
+            res.setHeader('Location', `${STREAM_PATH_MANIFEST}?${originArg}${refArg}q=` + q)
+            res.end('')
+            return
+        }
+        
+        // Forward response
+        response.body.on('data', function (chunk) { res.write(chunk/*, 'binary'*/) })
 
-                res.setHeader('access-control-allow-headers', requestedHeaders || 'range')
-                res.status(200)
-                res.end()
+        response.body.once('end', function () {
+            // const completed = response.complete
+            // console.log('REQUEST END', method, requestUrl, response.status)
 
-                return
-            }
+            res.end('')
+        })
+    }, handleError)
+}
 
-            if (requestedHeaders) res.setHeader('access-control-allow-headers', requestedHeaders || 'range')
-
-            let isRedirect = false
-
-            // Set Response Headers and status
-            const rawHeaders = response.headers.raw()
-            const allowedHeaders = [
-                'accept-ranges',
-                'content-length',
-                'connection',
-                'content-type',
-                'content-range',
-                'content-encoding',
-                'cache-control',
-                'expires',
-                'location',
-                'transfer-encoding',
-                'access-control-request-headers',
-                'etag'
-            ]
-
-            allowedHeaders.forEach(headername => {
-                if (response.headers.has(headername)) {
-                    const value =  response.headers.get(headername)
-                
-                    if (headername === 'location') {
-                        isRedirect = true
-
-                        res.setHeader('Location', `${STREAM_PATH_VALID}?q=` + encodeURI(value)) // TODO handle relative paths?
-
-                        return
-                    }
-
-                    const values = rawHeaders[headername]
-    
-                    if (Array.isArray(values)) {
-                        values.forEach(function (value) {
-                            res.setHeader(headername, value)
-                        })
-                    }
-
-                    else res.setHeader(headername, value)
-                } 
-            })
-
-            res.status(response.statusCode || response.status)
-
-            // Redirect and rewrite m3u8 files
-            if (!isRedirect && hasContentType(response.headers.get('content-type'), 'application/x-mpegurl')) {
-                console.log('REDIRECT STREAM')
-                controller.abort()
-                res.setHeader('Location', `${STREAM_PATH_MANIFEST}?q=` + q)
-                res.end('')
-                return
-            }
-
-            // Forward response
-            response.body.on('data', function (chunk) { res.write(chunk/*, 'binary'*/) })
-
-            response.body.once('end', function () {
-                // const completed = response.complete
-                
-                res.end('')
-            })
-        }, handleError)
-    }
-    
-    return handleRoute
+return handleRoute
 }

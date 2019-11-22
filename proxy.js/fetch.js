@@ -27,7 +27,7 @@ function fetch (url = '', options = empty) {
     if (
         freeAgent &&
         parsedAppURL.protocol === 'https:' &&
-        parsed.host === parsedAppURL.host && 
+        // parsed.host === parsedAppURL.host && 
         parsed.hostname === parsedAppURL.hostname &&
         parsed.protocol === 'https:'
     ) options.agent = freeAgent

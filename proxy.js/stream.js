@@ -14,14 +14,10 @@ function getBaseFromURL (uri) {
     const pathname = parsed.pathname
 
     if (pathname) {
-        parsed.pathname = dirname(pathname)
+        const output = dirname(pathname)
 
-        return parsed.toString()
+        return new URL(output, parsed.origin).toString()
     }
-}
-
-function combineURLS(baseURL, relativeURL) {
-    return relativeURL ? baseURL.replace(/\/+$/, '') + '/' + relativeURL.replace(/^\/+/, '') : baseURL
 }
 
 function shouldAccumulateUri (url) {
@@ -37,7 +33,7 @@ module.exports = function ({
     STREAM_PATH_MANIFEST,
     SERVER_PROTOCOL = 'http://'
 }) {
-    function modifyManifest (streampath, lines) {
+    function modifyManifest (streampath, lines, ref, o) {
         const base = getBaseFromURL(streampath)
         const parseStream = new M3U8ParseStream()
         const output = []
@@ -50,7 +46,7 @@ module.exports = function ({
             const uri = uri_input.replace(/^\/\//, SERVER_PROTOCOL)
     
             try {
-                if (isUrlRelative(uri)) obj = new URL(combineURLS(base, uri))
+                if (isUrlRelative(uri)) obj = new URL(uri, base)
                 
                 else obj = new URL(uri)
             } catch (e) {
@@ -64,13 +60,15 @@ module.exports = function ({
             }
     
             const ext = extname(obj.pathname)
-    
-            obj = new URL('?q=' + encodeURIComponent(obj.toString()), 
+            const refArg = ref === void 0 ? '' : 'ref=' + encodeURIComponent(ref)  + '&'
+            const originArg = o === void 0 ? '' : 'o=' + encodeURIComponent(o)  + '&'
+
+            obj = new URL('?' + originArg + refArg + 'q=' + encodeURIComponent(obj.toString()), 
                 ext === '.m3u8'?
                 STREAM_PATH_MANIFEST: // modify manifiest
                 STREAM_PATH_VALID // cors proxy
             )
-    
+
             return obj
         }
     
@@ -84,10 +82,15 @@ module.exports = function ({
                 let joined = Object.entries(attributes).map(function ([key, value]) {
                     if (typeof value === 'object') {
                         if (key === 'RESOLUTION') value = `${value.width}x${value.height}`
-                        
-                        else {
+
+                        else if (key === 'IV') 
+                        {
+                            value = '0x' + Array.prototype.slice.call(value).map(function (v) { // was Uint32Array
+                                return v.toString(16).padStart(8, 0)
+                            }).join('')
+                        } else {
                             console.warn('FIXME UNSUPPORTED TAG ->', key)
-    
+
                             return
                         }
                     }
@@ -125,7 +128,7 @@ module.exports = function ({
     return function (req, res) {
         const query = req.query
     
-        const { ref, q: pathname } = query
+        const { ref, q: pathname, o } = query
     
         res.setHeader('Access-Control-Allow-Origin', '*')
     
@@ -151,7 +154,8 @@ module.exports = function ({
                 DNT: 1
             }
 
-            if (ref !== void 0) headers.Referer = ref
+            if (ref !== void 0) headers.Referer = decodeURIComponent(ref)
+            // if (o !== void 0) headers.Origin = decodeURIComponent(o)
     
             console.log('PROXY STREAM REQUEST', requestUrl)
     
@@ -171,7 +175,7 @@ module.exports = function ({
                 }
     
                 const lines = response.body.toString().split('\n')
-                const manifest = modifyManifest(requestUrl, lines)
+                const manifest = modifyManifest(requestUrl, lines, ref, o)
                 
                 if (!manifest) {
                     handleError(new Error('Invalid response'))
