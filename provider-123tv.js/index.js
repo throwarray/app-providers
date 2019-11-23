@@ -68,7 +68,7 @@ async function collection ({ query = {} }) {
         form: {
             action: '_123tv_load_more_videos_from_category',
             cat_id: 1,
-            page_num: page
+            page_num: page - 1
         }
     })
     
@@ -137,6 +137,7 @@ async function meta ({ query = {} }) {
 
     if (!isWebURL(poster)) return
 
+    //.content script ?
     $('script').each(function () {
         const script = $(this)
         const text = script.html()

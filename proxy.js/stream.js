@@ -5,8 +5,10 @@ const { ParseStream: M3U8ParseStream } = require('m3u8-parser')
 
 function isUrlRelative (uri) {
     const parsed = parseURL(uri)
+
+    if (parsed.protocol === null && !parsed.pathname.endsWith('/')) return true
     
-    if (parsed.protocol === null) return true
+    else return false
 }
 
 function getBaseFromURL (uri) {
@@ -14,11 +16,13 @@ function getBaseFromURL (uri) {
     const pathname = parsed.pathname
 
     if (pathname) {
-        const output = dirname(pathname)
-
-        return new URL(output, parsed.origin).toString()
+        const name = dirname(pathname)
+        const url = new URL(name, parsed.origin).toString()
+        
+        return url.endsWith('/') ? url : url + '/'
     }
 }
+
 
 function shouldAccumulateUri (url) {
     return url && (url.protocol === 'http:' || url.protocol === 'https:')
@@ -30,11 +34,10 @@ function shouldAccumulateUri (url) {
 module.exports = function ({
     STREAM_PATH_INVALID,
     STREAM_PATH_VALID,
-    STREAM_PATH_MANIFEST,
-    SERVER_PROTOCOL = 'http://'
+    STREAM_PATH_MANIFEST
 }) {
     function modifyManifest (streampath, lines, ref, o) {
-        const base = getBaseFromURL(streampath)
+        let base = getBaseFromURL(streampath)
         const parseStream = new M3U8ParseStream()
         const output = []
     
@@ -43,11 +46,11 @@ module.exports = function ({
         function proxyURL (uri_input, base = STREAM_PATH_INVALID) { 
             let obj
 
-            const uri = uri_input.replace(/^\/\//, SERVER_PROTOCOL)
+            const uri = uri_input.replace(/^\/\//, 'http://')
     
             try {
-                if (isUrlRelative(uri)) obj = new URL(uri, base)
-                
+                if (base && !base.endsWith('/')) base = base + '/'    
+                if (isUrlRelative(uri)) obj = new URL(uri, base) // .replace(/^\//, '')
                 else obj = new URL(uri)
             } catch (e) {
                 obj = null
