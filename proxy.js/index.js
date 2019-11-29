@@ -6,7 +6,7 @@ module.exports = function (constants) {
     const stream = require('./stream')(constants)
 
     router.all('/proxy', proxy)
-    router.all('/stream', stream)
-
+    router.get('/stream', stream)
+    
     return router
 }

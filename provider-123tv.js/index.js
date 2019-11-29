@@ -1,6 +1,6 @@
 // TODO replace localhost proxy
 
-const CryptoJS = require("crypto-js")
+const CryptoJS = require('crypto-js')
 
 const cheerio = require('cheerio')
 
@@ -53,18 +53,18 @@ const func = function(content) {
 async function collection ({ query = {} }) {
     const { id, page = 1 } = query
 
-    const ref = "http://123tvnow.com/category/united-states-usa/"
+    const ref = 'http://123tvnow.com/category/united-states-usa/'
     const response = await fetch({
-        url: `http://123tvnow.com/wp-admin/admin-ajax.php`,
-        "headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0",
-            "Accept": "text/html, */*; q=0.01",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": ref
+        url: 'http://123tvnow.com/wp-admin/admin-ajax.php',
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0',
+            'Accept': 'text/html, */*; q=0.01',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': ref
         },
-        method: "POST",
+        method: 'POST',
         form: {
             action: '_123tv_load_more_videos_from_category',
             cat_id: 1,
@@ -113,29 +113,41 @@ async function meta ({ query = {} }) {
     
     const matches = id.match(/^tv_123tv-(.+)$/)
 
-    if (!matches) return
+    if (!matches) { 
+        console.warn('Invalid item id')
+
+        return
+    }
 
     const url = `http://123tvnow.com/watch/${matches[1]}/`
 
-    const html = await fetch({
+    let html
+    
+    try { html = await fetch({
         url,
-        "headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0",
-            "Accept": "text/html, */*; q=0.01",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Referer": "http://123tvnow.com/category/united-states-usa/"
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0',
+            'Accept': 'text/html, */*; q=0.01',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'http://123tvnow.com/category/united-states-usa/',
+            //'Origin': 'http://123tvnow.com'
         }
-    })
+    }) } catch (e) {
+        console.log('Failed to fetch', e)
+
+        return
+    }
 
     const $ = cheerio.load(html.body)
     const head = $('head')
     const title = head.find('title').text()
     const description = head.find('meta[name="description"]').attr('content')
-    const poster = head.find('meta[name="twitter:image"]').attr('content') //.replace(/-[0-9]+x[0-9]+/g,'')
+    
+    let poster = head.find('meta[name="twitter:image"]').attr('content') //.replace(/-[0-9]+x[0-9]+/g,'')
     
     let msg, payload
 
-    if (!isWebURL(poster)) return
+    if (!isWebURL(poster)) poster = void 0
 
     //.content script ?
     $('script').each(function () {
@@ -155,15 +167,45 @@ async function meta ({ query = {} }) {
     })
 
 
-    if (!msg || !payload) return
+    if (!msg || !payload) {
+        const embedSrc = $('.video-player').find('iframe[allowFullScreen]').attr('src').replace(/^\/\//, 'https://')
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0',
+            Referer: embedSrc,
+            Origin: 'https://ok.ru/'
+        }
+
+        console.log('EMBED SRC', embedSrc)
+
+        if (embedSrc.startsWith('https://ok.ru/')) {
+            const response = await fetch(embedSrc, { headers })
+            const text = response.body
+            const $ = cheerio.load(text)
+            const meta = JSON.parse(JSON.parse($('[data-module="OKVideo"]').attr('data-options')).flashvars.metadata)
+            const streamURL = new URL(meta.hlsMasterPlaylistUrl.replace(/^\/\//, 'https://')).toString()
+
+            if (!isWebURL(streamURL)) return
+
+            else return {
+                id,
+                title,
+                description,
+                poster: poster && ('https://localhost:3001/api/proxy/?q=' + encodeURIComponent(poster) + '&ref=' + encodeURIComponent(url)),
+                src: 'https://localhost:3001/api/stream/?q=' + encodeURIComponent(streamURL) + '&ref=' + encodeURIComponent(headers.Referer) + '&o=' + encodeURIComponent(headers.Origin),
+                contentType: 'm3u8'
+            }
+        }
+    
+        return
+    }
 
     const response = await fetch({
         url: msg + '?1&json=' + payload,
-        "headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0",
-            "Accept": "text/html, */*; q=0.01",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Referer": url
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:70.0) Gecko/20100101 Firefox/70.0',
+            'Accept': 'text/html, */*; q=0.01',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': url
         },
         json: true
     })
@@ -174,12 +216,9 @@ async function meta ({ query = {} }) {
 
     if (Array.isArray(body)) {
         const found = body.find(stream=> stream && stream.type === 'hls')
-
+        
         if (found) streamURL = found.file
-
     } else if (typeof body === 'string') streamURL === body
-
-    console.log('WHATS STREAM', streamURL, response.statusCode)
 
     if (!isWebURL(streamURL)) return
 
@@ -187,7 +226,7 @@ async function meta ({ query = {} }) {
         id,
         title,
         description,
-        poster: 'https://localhost:3001/api/proxy/?q=' + encodeURIComponent(poster) + '&ref=' + encodeURIComponent(url),
+        poster: poster && ('https://localhost:3001/api/proxy/?q=' + encodeURIComponent(poster) + '&ref=' + encodeURIComponent(url)),
         src: 'https://localhost:3001/api/stream/?q=' + encodeURIComponent(streamURL) + '&ref=' + encodeURIComponent(url),
         contentType: 'm3u8'
     }
