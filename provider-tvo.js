@@ -118,7 +118,7 @@ async function getSeason ({ query }) {
             'ajax_page_state[theme_token]': '',
             'ajax_page_state[libraries]': 'anchor_link/drupal.anchor_link,bootstrap/popover,bootstrap/tooltip,core/html5shiv,entity_browser/common,glazed/bootstrap3,glazed/global-styling,glazed_builder/bootstrap_light,glazed_builder/core,glazed_builder/elements.font_awesome,system/base,tvo/footer-menu,tvo/global-styling,tvo/masonry-menu,tvo/modal,tvo/program-page,tvo/season-filter,tvo_brightcove/brightcove.thumblazy,tvo_external_link/external.new_tab,tvo_gtm/global-gtm,view_scroll_fade/view_scroll_fade,views/views.module,views_infinite_scroll/views-infinite-scroll'
         },
-        "method": "POST"
+        'method': 'POST'
     }) 
     
     const json = JSON.parse(response.body)

@@ -62,11 +62,7 @@ function shouldAccumulateUri (url) {
     return url && (url.protocol === 'http:' || url.protocol === 'https:')
 }
 
-// REWRITE URLS IN M3U8
-// NOTE https://github.com/videojs/m3u8-parser Some tags are unsupported by the parser and the URL property is unchanged
-// NOTE Add response headers
-
-module.exports = function (settings) {
+function Route (settings) {
     return function (req, res) {
         const query = req.query    
         
@@ -152,6 +148,8 @@ module.exports = function (settings) {
     }
 }
 
+// REWRITE URLS IN M3U8
+// NOTE https://github.com/videojs/m3u8-parser Some tags are unsupported by the parser and the URL property is unchanged
 const modify = {
     hls (settings, manifestURL, data, ref, o) {
         const base = getBaseFromURL(manifestURL)
@@ -251,8 +249,6 @@ const modify = {
         return output.map(({ data }) => data).join('\n')
     },
     dash (settings, manifestURL, data, ref, o) {
-        console.log('WHATS DATA', data)
-
         const $ = cheerio.load(data.toString('utf8'), { xmlMode: true })
         const root = $('MPD')
         const bases = root.find('> BaseURL')
@@ -305,8 +301,7 @@ const modify = {
         assert.strictEqual(bases.length <= 1, true, 'found multiple BaseURL tags at MPD root')
         assert.strictEqual(isWebUrl(base_path), true, `base url must be web ready ${base_path}`)
         // assert.strictEqual(base_path.endsWith('/'), true, `base url must end with / got     ${base_path}`)
-        
-        console.log('USE BASE', base_path)
+        // console.log('USE BASE', base_path)
     
         // Modify segment BaseURL tags
         segment_bases.each(function () {
@@ -346,3 +341,7 @@ const modify = {
         return $.xml()
     }
 }
+
+module.exports = Route
+
+Route.modify = modify

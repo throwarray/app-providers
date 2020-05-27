@@ -2,11 +2,13 @@ const fetch = require('./fetch.js')
 const AbortController = require('abort-controller')
 const uuid = require('uuid')
 const { URL } = require('url')
+const { modify } = require('./stream.js')
 
 module.exports = function (settings) {
-    const { STREAM_PATH_VALID /*, STREAM_PATH_MANIFEST */ } = settings
+    const { STREAM_PATH_VALID } = settings
+
     const handleRoute = function (req, res) {
-        const { q, ref, o } = req.query || {}
+        const { q, ref, o, t } = req.query || {}
         const method = req.method
         const controller = new AbortController()
         const signal = controller.signal
@@ -69,7 +71,7 @@ module.exports = function (settings) {
         const lang = req.headers['accept-language']
         const connection = req.headers['connection']
         const range = req.headers['range']
-        
+
         if (cached) headers['if-none-match'] = cached
         if (lang) headers['accept-language'] = lang
         if (connection) headers.Connection = connection
@@ -85,8 +87,10 @@ module.exports = function (settings) {
             compress: true,
             signal,
             method
-        }).then(function (response) {        
-        console.log('BEGIN RESPONSE', response.status, reqId, (Date.now() - requestStart) + 'ms', q)
+        }).then(function (response) {
+        const [contentType /*, charset*/ ] = (response.headers.get('content-type') || '').toLowerCase().split(' ')
+
+        console.log('BEGIN RESPONSE', response.status, reqId, (Date.now() - requestStart) + 'ms', q, contentType)
 
         res.setHeader('access-control-allow-origin', '*')
         
@@ -133,7 +137,7 @@ module.exports = function (settings) {
                 if (headername === 'location') {
                     isRedirect = true
                     
-                    res.setHeader('Location', `${STREAM_PATH_VALID}?${originArg}${refArg}q=` + encodeURIComponent(value)) // TODO handle relative paths?
+                    res.setHeader('Location', `${STREAM_PATH_VALID}?${originArg}${refArg}q=` + encodeURIComponent(value)) // TODO handles relative paths?
                     
                     return
                 }
@@ -149,13 +153,47 @@ module.exports = function (settings) {
                 else res.setHeader(headername, value)
             } 
         })
-        
+
         const statusCode = response.status
         
         res.status(statusCode)
-        // Forward response
-        response.body.on('data', function (chunk) { res.write(chunk, 'binary') })
-        response.body.once('end', function () { resEnd() })
+        
+        if (t === 'dash' || contentType.endsWith('xml')) {
+            console.log('modify dash')
+
+            response.text().then(function (body) {
+                const manifest = modify.dash(settings, requestUrl, body, ref, o)
+
+                if (!manifest) {
+                    handleError(new Error('Invalid mpd response'))
+    
+                    return
+                }
+
+                res.setHeader('content-type', 'application/dash+xml')
+                res.end(manifest)
+            }, handleError)
+        } else if (t === 'hls' || contentType.endsWith('mpegurl')) {
+            console.log('modify hls')
+
+            response.text().then(function (body) {
+                const manifest = modify.hls(settings, requestUrl, body, ref, o)
+                
+                if (!manifest) {
+                    handleError(new Error('Invalid m3u8 response'))
+    
+                    return
+                }
+
+                res.type('application/x-mpegurl')
+                res.end(manifest)
+            }, handleError)
+        } else {
+            // Forward response
+            response.body.on('data', function (chunk) { res.write(chunk, 'binary') })
+            response.body.once('end', function () { resEnd() })
+        }
+
     }, handleError)
 }
 

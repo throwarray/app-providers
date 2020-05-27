@@ -54,48 +54,54 @@ async function getSeriesItems ({ prefix, id, destination, query }) {
             const Season = item.Season
             const seasonNumber = Number(Season && Season.Number)
             
-            if (item.Authentication && item.Authentication.Required) return
+            if (Number.isNaN(seasonNumber)) return
 
-            if (seasonNumber !== void 0) {
-                if (!seasonMap.has(seasonNumber)) {
-                    seasonMap.set(seasonNumber, {
-                        type: 'season',
-                        title: Season.Name,
-                        season: seasonNumber,
-                        items: []
-                    })
-                }
+            else if (item.Authentication && item.Authentication.Required) return
 
-                const season = seasonMap.get(seasonNumber)
-                const { poster, thumbnail } = parseImages(item.Images)
-                const image = thumbnail || poster
-
-                season.items.push({
+            else if (!seasonMap.has(seasonNumber)) {
+                seasonMap.set(seasonNumber, {
+                    type: 'season',
+                    title: Season.Name,
                     season: seasonNumber,
-                    episode: item.Episode,
-                    id: prefix + '-media-' + item.Id,
-                    title: item.Name,
-                    description: item.ShortDesc,
-                    type: 'episode',
-                    poster:  image !== void 0 ? image + '?height=200&maintain_aspect=1&size=200' : void 0
+                    items: []
                 })
             }
+
+            const season = seasonMap.get(seasonNumber)
+            const { poster, thumbnail } = parseImages(item.Images)
+            const image = thumbnail || poster
+
+            season.items.push({
+                season: seasonNumber,
+                episode: item.Episode,
+                id: prefix + '-media-' + item.Id,
+                title: item.Name,
+                description: item.ShortDesc,
+                type: 'episode',
+                poster:  image !== void 0 ? image + '?height=200&maintain_aspect=1&size=200' : void 0
+            })
         })
 
         meta.seasons = [...seasonMap.values()]
 
-        if (meta.season === void 0) {
-            meta.season = meta.seasons[0].season
+        if (meta.season === void 0) {           
+            const first =  meta.seasons[0]
+            
+            if (!first) return
+
+            meta.season = first.season
         } else {
             meta.season = Number(meta.season)
         }
     }
+    
+    if (Number.isNaN(meta.season)) meta.season = 1
 
     return meta
 }
 
 async function getPackage ({ id, destination })  {
-    console.log('request', `https://capi.9c9media.com/destinations/${destination}/platforms/desktop/contents/${id}?%24include=%5BId%2CName%2CDesc%2CShortDesc%2CType%2COwner%2CMedia%2CSeason%2CEpisode%2CGenres%2CImages%2CContentPackages%2CAuthentication%2CPeople%2COmniture%2C+revShare%5D&%24lang=en`)
+    // console.log('request', `https://capi.9c9media.com/destinations/${destination}/platforms/desktop/contents/${id}?%24include=%5BId%2CName%2CDesc%2CShortDesc%2CType%2COwner%2CMedia%2CSeason%2CEpisode%2CGenres%2CImages%2CContentPackages%2CAuthentication%2CPeople%2COmniture%2C+revShare%5D&%24lang=en`)
 
     const { body } = await fetch({
         url: `https://capi.9c9media.com/destinations/${destination}/platforms/desktop/contents/${id}?%24include=%5BId%2CName%2CDesc%2CShortDesc%2CType%2COwner%2CMedia%2CSeason%2CEpisode%2CGenres%2CImages%2CContentPackages%2CAuthentication%2CPeople%2COmniture%2C+revShare%5D&%24lang=en`,
